@@ -14,12 +14,11 @@
     .status-card {
       position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
       background: white; padding: 12px 20px; border-radius: 20px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.25); z-index: 1000; text-align: center;
-      min-width: 280px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; text-align: center;
+      min-width: 260px;
     }
     .status-title { font-weight: bold; color: #b71c1c; font-size: 15px; margin-bottom: 4px; }
     .status-desc { font-size: 13px; color: #333; }
-    .debug-text { font-size: 11px; color: #666; margin-top: 4px; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -27,7 +26,6 @@
 <div class="status-card">
   <div class="status-title">🚑 H-AAT Acil Ambulans Takibi</div>
   <div id="status" class="status-desc" style="color: orange; font-weight: bold;">GPS sinyali aranıyor...</div>
-  <div id="debug" class="debug-text">Bağlantı kuruluyor...</div>
 </div>
 
 <div id="map"></div>
@@ -39,7 +37,7 @@
   firebase.initializeApp(firebaseConfig);
   const database = firebase.database();
 
-  const map = L.map('map').setView([41.3388, 36.2497], 15);
+  const map = L.map('map').setView([41.3388, 36.2497], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap'
   }).addTo(map);
@@ -47,59 +45,50 @@
   let marker = null;
   const urlParams = new URLSearchParams(window.location.search);
   const takipId = urlParams.get('id');
-  const debugEl = document.getElementById('debug');
-
-  function haritadaGoster(lat, lng) {
-    document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
-    document.getElementById('status').style.color = 'green';
-
-    const customAmbulance = L.divIcon({
-      className: '',
-      html: "<div style='font-size:32px; filter: drop-shadow(0 0 5px red);'>🚑</div>",
-      iconSize: [36, 36],
-      iconAnchor: [18, 18]
-    });
-
-    if (!marker) {
-      marker = L.marker([lat, lng], { icon: customAmbulance }).addTo(map);
-      map.setView([lat, lng], 16);
-    } else {
-      marker.setLatLng([lat, lng]);
-    }
-  }
-
-  function veriyiIsle(veri, kaynak) {
-    debugEl.innerText = kaynak + " üzerinden veri geldi: " + veri;
-    let clean = String(veri).replace(/["'\\]/g, '').trim();
-    let coords = clean.split(',');
-    if (coords.length >= 2) {
-      let lat = parseFloat(coords[0]);
-      let lng = parseFloat(coords[1]);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        haritadaGoster(lat, lng);
-      }
-    }
-  }
 
   if (!takipId) {
     document.getElementById('status').innerText = 'Hata: Takip parametresi eksik!';
-    debugEl.innerText = 'URL sonuna ?id=... eklenmedi.';
+    document.getElementById('status').style.color = 'red';
   } else {
-    debugEl.innerText = 'Aranan ID: ' + takipId;
-
-    // 1. Yol: Klasör altı
-    database.ref("HATT_copy_test_copy_last/" + takipId).on('value', (s) => {
-      if (s.exists()) {
-        veriyiIsle(s.val(), "Klasör");
+    // Klasör altındaysa da doğrudan bulması için yolu hazırla
+    const path = "HATT_copy_test_copy_last/" + takipId;
+    
+    database.ref(path).on('value', (snapshot) => {
+      let data = snapshot.val();
+      
+      // Eğer klasör altında bulamazsa bir de kök dizine baksın
+      if (!data) {
+        database.ref(takipId).once('value', (s2) => {
+          let rootData = s2.val();
+          if (rootData) islemYap(rootData);
+        });
+      } else {
+        islemYap(data);
       }
     });
+  }
 
-    // 2. Yol: Kök dizin
-    database.ref(takipId).on('value', (s) => {
-      if (s.exists()) {
-        veriyiIsle(s.val(), "Kök");
+  function islemYap(data) {
+    // Fazladan gelen tüm tırnak, ters slaş ve boşlukları temizle
+    let clean = String(data).replace(/["'\\]/g, '').trim();
+    let coords = clean.split(',');
+
+    if (coords.length >= 2) {
+      let lat = parseFloat(coords[0]);
+      let lng = parseFloat(coords[1]);
+
+      if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+        document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
+        document.getElementById('status').style.color = 'green';
+
+        if (!marker) {
+          marker = L.marker([lat, lng]).addTo(map);
+          map.setView([lat, lng], 16);
+        } else {
+          marker.setLatLng([lat, lng]);
+        }
       }
-    });
+    }
   }
 </script>
 </body>
