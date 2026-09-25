@@ -14,25 +14,12 @@
     .status-card {
       position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
       background: white; padding: 12px 20px; border-radius: 20px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; text-align: center;
-      min-width: 260px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.25); z-index: 1000; text-align: center;
+      min-width: 280px;
     }
     .status-title { font-weight: bold; color: #b71c1c; font-size: 15px; margin-bottom: 4px; }
     .status-desc { font-size: 13px; color: #333; }
-
-    /* Ambulans Simgesi */
-    .ambulance-marker {
-      background: white;
-      border: 2px solid #b71c1c;
-      border-radius: 50%;
-      width: 42px;
-      height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      box-shadow: 0 0 15px rgba(183, 28, 28, 0.7);
-    }
+    .debug-text { font-size: 11px; color: #666; margin-top: 4px; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -40,6 +27,7 @@
 <div class="status-card">
   <div class="status-title">🚑 H-AAT Acil Ambulans Takibi</div>
   <div id="status" class="status-desc" style="color: orange; font-weight: bold;">GPS sinyali aranıyor...</div>
+  <div id="debug" class="debug-text">Bağlantı kuruluyor...</div>
 </div>
 
 <div id="map"></div>
@@ -56,55 +44,60 @@
     attribution: '© OpenStreetMap'
   }).addTo(map);
 
-  const ambulanceIcon = L.divIcon({
-    className: 'custom-div-icon',
-    html: "<div class='ambulance-marker'>🚑</div>",
-    iconSize: [42, 42],
-    iconAnchor: [21, 21]
-  });
-
   let marker = null;
   const urlParams = new URLSearchParams(window.location.search);
   const takipId = urlParams.get('id');
+  const debugEl = document.getElementById('debug');
 
-  function konumGuncelle(data) {
-    if (!data) return;
-    let clean = String(data).replace(/["'\\]/g, '').trim();
+  function haritadaGoster(lat, lng) {
+    document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
+    document.getElementById('status').style.color = 'green';
+
+    const customAmbulance = L.divIcon({
+      className: '',
+      html: "<div style='font-size:32px; filter: drop-shadow(0 0 5px red);'>🚑</div>",
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
+
+    if (!marker) {
+      marker = L.marker([lat, lng], { icon: customAmbulance }).addTo(map);
+      map.setView([lat, lng], 16);
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+  }
+
+  function veriyiIsle(veri, kaynak) {
+    debugEl.innerText = kaynak + " üzerinden veri geldi: " + veri;
+    let clean = String(veri).replace(/["'\\]/g, '').trim();
     let coords = clean.split(',');
-
     if (coords.length >= 2) {
       let lat = parseFloat(coords[0]);
       let lng = parseFloat(coords[1]);
-
-      if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
-        document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
-        document.getElementById('status').style.color = 'green';
-
-        if (!marker) {
-          marker = L.marker([lat, lng], { icon: ambulanceIcon }).addTo(map);
-          map.setView([lat, lng], 16);
-        } else {
-          marker.setLatLng([lat, lng]);
-        }
+      if (!isNaN(lat) && !isNaN(lng)) {
+        haritadaGoster(lat, lng);
       }
     }
   }
 
   if (!takipId) {
     document.getElementById('status').innerText = 'Hata: Takip parametresi eksik!';
-    document.getElementById('status').style.color = 'red';
+    debugEl.innerText = 'URL sonuna ?id=... eklenmedi.';
   } else {
-    // 1. Klasör altını dinle
-    database.ref("HATT_copy_test_copy_last/" + takipId).on('value', (snapshot) => {
-      if (snapshot.exists()) {
-        konumGuncelle(snapshot.val());
+    debugEl.innerText = 'Aranan ID: ' + takipId;
+
+    // 1. Yol: Klasör altı
+    database.ref("HATT_copy_test_copy_last/" + takipId).on('value', (s) => {
+      if (s.exists()) {
+        veriyiIsle(s.val(), "Klasör");
       }
     });
 
-    // 2. Kök dizini de dinle (hangisinde varsa anında yakalar)
-    database.ref(takipId).on('value', (snapshot) => {
-      if (snapshot.exists()) {
-        konumGuncelle(snapshot.val());
+    // 2. Yol: Kök dizin
+    database.ref(takipId).on('value', (s) => {
+      if (s.exists()) {
+        veriyiIsle(s.val(), "Kök");
       }
     });
   }
