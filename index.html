@@ -81,8 +81,15 @@
         document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
         document.getElementById('status').style.color = 'green';
 
+        // Ambulans simgesi (SVG formatında, sorunsuz yüklenir)
+        const ambulanceIcon = L.icon({
+          iconUrl: 'https://cdn-icons-png.flaticon.com/512/2893/2893811.png',
+          iconSize: [46, 46],
+          iconAnchor: [23, 23]
+        });
+
         if (!marker) {
-          marker = L.marker([lat, lng]).addTo(map);
+          marker = L.marker([lat, lng], { icon: ambulanceIcon }).addTo(map);
           map.setView([lat, lng], 16);
         } else {
           marker.setLatLng([lat, lng]);
