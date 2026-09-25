@@ -3,95 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>HATT Acil Ambulans Canlı Takip Sistemi</title>
-  
-  <!-- Harita Motoru (Leaflet) -->
+  <title>H-AAT Acil Ambulans Takip</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Firebase Kütüphaneleri -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    #map { height: 100vh; width: 100%; }
-    .bilgi-karti {
-      position: absolute;
-      top: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255, 255, 255, 0.95);
-      padding: 12px 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.25);
-      z-index: 1000;
-      text-align: center;
-      width: 85%;
-      max-width: 400px;
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: sans-serif; }
+    #map { height: 100%; width: 100%; }
+    .status-card {
+      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+      background: white; padding: 12px 20px; border-radius: 20px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; text-align: center;
+      min-width: 260px;
     }
-    .baslik { font-size: 15px; font-weight: bold; color: #c62828; margin-bottom: 4px; }
-    .durum { font-size: 13px; color: #2e7d32; font-weight: 600; }
+    .status-title { font-weight: bold; color: #b71c1c; font-size: 15px; margin-bottom: 4px; }
+    .status-desc { font-size: 13px; color: #333; }
   </style>
 </head>
 <body>
 
-  <div class="bilgi-karti">
-    <div class="baslik">🚑 H-AAT Acil Ambulans Takibi</div>
-    <div id="durumYazisi" class="durum">Konum aranıyor...</div>
-  </div>
+<div class="status-card">
+  <div class="status-title">🚑 H-AAT Acil Ambulans Takibi</div>
+  <div id="status" class="status-desc" style="color: orange; font-weight: bold;">GPS sinyali aranıyor...</div>
+</div>
 
-  <div id="map"></div>
+<div id="map"></div>
 
-  <script>
-    // URL'den takip ID'sini yakala (?id=KONUM_12345678901)
-    const urlParams = new URLSearchParams(window.location.search);
-    const hastaID = urlParams.get('id');
+<script>
+  const firebaseConfig = {
+    databaseURL: "https://h-att-293ad-default-rtdb.firebaseio.com"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const database = firebase.database();
 
-    // Firebase Realtime Database Adresiniz
-    // (App Inventor'da FirebaseDB1 bileşeninde yazan adresle aynı olmalıdır)
-    const firebaseConfig = {
-      databaseURL: "https://h-att-293ad-default-rtdb.firebaseio.com" 
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+  const map = L.map('map').setView([41.3388, 36.2497], 14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
 
-    // Harita kurulumu (Varsayılan Türkiye merkezli)
-    const map = L.map('map').setView([41.2867, 36.3312], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+  let marker = null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const takipId = urlParams.get('id');
 
-    let ambulansMarker = null;
+  if (!takipId) {
+    document.getElementById('status').innerText = 'Hata: Takip parametresi eksik!';
+    document.getElementById('status').style.color = 'red';
+  } else {
+    // Klasör altındaysa da doğrudan bulması için yolu hazırla
+    const path = "HATT_copy_test_copy_last/" + takipId;
+    
+    database.ref(path).on('value', (snapshot) => {
+      let data = snapshot.val();
+      
+      // Eğer klasör altında bulamazsa bir de kök dizine baksın
+      if (!data) {
+        database.ref(takipId).once('value', (s2) => {
+          let rootData = s2.val();
+          if (rootData) islemYap(rootData);
+        });
+      } else {
+        islemYap(data);
+      }
+    });
+  }
 
-    if (!hastaID) {
-      document.getElementById('durumYazisi').innerText = "Hata: Takip parametresi eksik!";
-      document.getElementById('durumYazisi').style.color = "red";
-    } else {
-      // Firebase'den anlık koordinat dinleme
-      db.ref(hastaID).on('value', (snapshot) => {
-        const konumMetni = snapshot.val();
-        if (konumMetni && typeof konumMetni === 'string') {
-          const parcalar = konumMetni.split(',');
-          const enlem = parseFloat(parcalar[0]);
-          const boylam = parseFloat(parcalar[1]);
+  function islemYap(data) {
+    // Fazladan gelen tüm tırnak, ters slaş ve boşlukları temizle
+    let clean = String(data).replace(/["'\\]/g, '').trim();
+    let coords = clean.split(',');
 
-          if (!isNaN(enlem) && !isNaN(boylam)) {
-            if (!ambulansMarker) {
-              ambulansMarker = L.marker([enlem, boylam]).addTo(map)
-                .bindPopup("<b>Ambulans Canlı Konumu</b>").openPopup();
-            } else {
-              ambulansMarker.setLatLng([enlem, boylam]);
-            }
-            map.panTo([enlem, boylam]);
-            document.getElementById('durumYazisi').innerText = "● Ambulans Hareket Halinde (Canlı)";
-          }
+    if (coords.length >= 2) {
+      let lat = parseFloat(coords[0]);
+      let lng = parseFloat(coords[1]);
+
+      if (!isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+        document.getElementById('status').innerText = 'Ambulans Canlı Takipte 🟢';
+        document.getElementById('status').style.color = 'green';
+
+        if (!marker) {
+          marker = L.marker([lat, lng]).addTo(map);
+          map.setView([lat, lng], 16);
         } else {
-          document.getElementById('durumYazisi').innerText = "GPS sinyali bekleniyor...";
+          marker.setLatLng([lat, lng]);
         }
-      });
+      }
     }
-  </script>
+  }
+</script>
 </body>
 </html>
