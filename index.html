@@ -19,6 +19,26 @@
     }
     .status-title { font-weight: bold; color: #b71c1c; font-size: 15px; margin-bottom: 4px; }
     .status-desc { font-size: 13px; color: #333; }
+
+    /* Ambulans İkon Stili ve Yanıp Sönme Efekti */
+    .ambulance-marker {
+      background: white;
+      border: 2px solid #b71c1c;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 15px rgba(183, 28, 28, 0.6);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(211, 47, 47, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+    }
   </style>
 </head>
 <body>
@@ -37,10 +57,18 @@
   firebase.initializeApp(firebaseConfig);
   const database = firebase.database();
 
-  const map = L.map('map').setView([41.3388, 36.2497], 14);
+  const map = L.map('map').setView([41.3388, 36.2497], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap'
   }).addTo(map);
+
+  // Özel Ambulans İkonu
+  const ambulanceIcon = L.divIcon({
+    className: 'custom-div-icon',
+    html: "<div class='ambulance-marker'>🚑</div>",
+    iconSize: [44, 44],
+    iconAnchor: [22, 22]
+  });
 
   let marker = null;
   const urlParams = new URLSearchParams(window.location.search);
@@ -50,13 +78,10 @@
     document.getElementById('status').innerText = 'Hata: Takip parametresi eksik!';
     document.getElementById('status').style.color = 'red';
   } else {
-    // Klasör altındaysa da doğrudan bulması için yolu hazırla
     const path = "HATT_copy_test_copy_last/" + takipId;
     
     database.ref(path).on('value', (snapshot) => {
       let data = snapshot.val();
-      
-      // Eğer klasör altında bulamazsa bir de kök dizine baksın
       if (!data) {
         database.ref(takipId).once('value', (s2) => {
           let rootData = s2.val();
@@ -69,7 +94,6 @@
   }
 
   function islemYap(data) {
-    // Fazladan gelen tüm tırnak, ters slaş ve boşlukları temizle
     let clean = String(data).replace(/["'\\]/g, '').trim();
     let coords = clean.split(',');
 
@@ -82,7 +106,7 @@
         document.getElementById('status').style.color = 'green';
 
         if (!marker) {
-          marker = L.marker([lat, lng]).addTo(map);
+          marker = L.marker([lat, lng], { icon: ambulanceIcon }).addTo(map);
           map.setView([lat, lng], 16);
         } else {
           marker.setLatLng([lat, lng]);
